@@ -1,0 +1,29 @@
+directories:
+  output: dist-electron
+  buildResources: build
+extends: null
+npmRebuild: false
+appId: com.pickleball.management
+productName: PickleballSystem
+copyright: Copyright © 2025 Pickleball Admin
+files:
+  - filter:
+      - build/**/*
+      - electron.js
+      - assets/**/*
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.png
+  requestedExecutionLevel: asInvoker
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Pickleball System
+  artifactName: PickleballSystemSetup.exe
+  deleteAppDataOnUninstall: false
+electronVersion: 33.4.0

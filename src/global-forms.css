@@ -1,0 +1,96 @@
+/* global-forms.css — readable form fields + responsive shell (CRA) */
+:root {
+  --form-bg: #ffffff;
+  --form-fg: #0f172a;
+  --form-border: #cccccc;
+  --form-radius: 6px;
+  --form-pad: 9px 10px;
+  --form-placeholder: #64748b;
+  --form-focus: #22c55e;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Keep #root overflow visible so position:sticky works for admin top nav (clip breaks sticky in some browsers). */
+#root {
+  min-height: 100vh;
+}
+
+/* ── Mobile & tablet ── */
+@media (max-width: 1024px) {
+  .ad-two-col {
+    grid-template-columns: 1fr !important;
+  }
+  .ad-stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .ad-page {
+    padding: 1rem !important;
+    gap: 1rem !important;
+  }
+
+  .ad-search {
+    max-width: 100% !important;
+  }
+
+  .ad-search-row {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .setup-landscape {
+    padding: 0.75rem !important;
+    align-items: flex-start !important;
+  }
+
+  .setup-landscape-card {
+    min-height: auto !important;
+  }
+
+  .setup-right-panel {
+    padding: 1.25rem !important;
+  }
+
+  .bracket-header {
+    padding: 1rem !important;
+  }
+
+  .bracket-scroll {
+    padding: 1rem !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .share-panel-inner {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  .share-url {
+    max-width: 100% !important;
+  }
+
+  /* Touch-friendly controls */
+  .ad-btn,
+  .ad-btn-sm,
+  .af-submit,
+  button.score-action-btn {
+    min-height: 44px;
+  }
+
+  .ad-btn-sm {
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ad-filter-tabs {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
