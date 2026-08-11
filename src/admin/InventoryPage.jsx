@@ -358,7 +358,7 @@ export default function InventoryPage() {
     const pricePerHour = itemType === "sale" ? 0 : Math.max(0, Number(itemForm.pricePerHour) || 0);
     const price = itemType === "rental" ? 0 : Math.max(0, Number(itemForm.price) || 0);
     const overdueFinePerHour = itemType === "rental" || itemType === "both" ? Math.max(0, Number(itemForm.overdueFinePerHour) || 0) : 0;
-    
+
     if (!name) {
       toast.error("Name is required");
       return;
@@ -371,7 +371,7 @@ export default function InventoryPage() {
       toast.error("Rental price is required for rental items");
       return;
     }
-    
+
     try {
       let promise;
       if (itemModal === "new") {
@@ -499,7 +499,7 @@ export default function InventoryPage() {
       const now = Date.now();
       const expectedMs = now + hours * 3600 * 1000;
       const estimatedRentalCharge = computeRentalCharge(lines, hours);
-      
+
       await wrapSync(
         fetch("/api/equipment/borrow", {
           method: "POST",
@@ -552,7 +552,7 @@ export default function InventoryPage() {
     const rentalCharge = getRentScheduledRentalCharge(data);
     const overdueCharge = computeOverdueFine(lines, lateH);
     const totalCharge = roundMoney(rentalCharge + overdueCharge);
-    
+
     setReturnModal({
       id: b.id,
       renterName: data.customerName || data.borrowerName,
@@ -709,7 +709,7 @@ export default function InventoryPage() {
         extraRentalCharge: extraRental,
       };
       const hist = [...(data.extensionHistory || []), entry];
-      
+
       const promise = fetch("/api/equipment/extend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1408,74 +1408,73 @@ export default function InventoryPage() {
             <div className="ad-card overflow-hidden">
               <div className="ad-card-header">
                 <h3 className="ad-card-title">Renting history ({reportFilteredBorrows.length})</h3>
-            </div>
-            <div className="overflow-x-auto max-h-80">
-              <table className="ad-table">
-                <thead>
-                  <tr>
-                    <th>Borrower</th>
-                    <th>Items</th>
-                    <th>Borrowed</th>
-                    <th>Returned</th>
-                    <th className="text-right">Rental</th>
-                    <th className="text-right">Overdue</th>
-                    <th className="text-right">Total</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {reportFilteredBorrows.length === 0 ? (
+              </div>
+              <div className="overflow-x-auto max-h-80">
+                <table className="ad-table">
+                  <thead>
                     <tr>
-                      <td colSpan={8} className="ad-empty">
-                        No rents in this period.
-                      </td>
+                      <th>Borrower</th>
+                      <th>Items</th>
+                      <th>Borrowed</th>
+                      <th>Returned</th>
+                      <th className="text-right">Rental</th>
+                      <th className="text-right">Overdue</th>
+                      <th className="text-right">Total</th>
+                      <th>Status</th>
                     </tr>
-                  ) : (
-                    reportFilteredBorrows.slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE).map((b) => (
-                      <tr key={b.id}>
-                        <td className="ad-td-main">{b.borrowerName}</td>
-                        <td className="text-sm">
-                          {(b.items || []).map((l) => `${l.itemName} ×${l.quantity}`).join(", ")}
-                        </td>
-                        <td className="text-xs whitespace-nowrap">
-                          {format(tsToDate(b.borrowedAt) || new Date(), "MMM d, yyyy HH:mm")}
-                        </td>
-                        <td className="text-xs whitespace-nowrap">
-                          {b.actualReturnAt
-                            ? format(tsToDate(b.actualReturnAt) || new Date(), "MMM d, yyyy HH:mm")
-                            : "—"}
-                        </td>
-                        <td className="text-right text-xs font-mono">
-                          {b.rentalCharge != null ? `₱${Number(b.rentalCharge).toFixed(2)}` : "—"}
-                        </td>
-                        <td className="text-right text-xs font-mono text-amber-400">
-                          {b.overdueCharge != null && Number(b.overdueCharge) > 0
-                            ? `₱${Number(b.overdueCharge).toFixed(2)}`
-                            : "—"}
-                        </td>
-                        <td className="text-right text-xs font-mono font-semibold">
-                          {b.totalCharge != null ? `₱${Number(b.totalCharge).toFixed(2)}` : "—"}
-                        </td>
-                        <td>
-                          <span
-                            className={`ad-badge ${
-                              b.status === "returned" ? "ad-badge-approved" : "ad-badge-pending"
-                            }`}
-                          >
-                            {b.status}
-                          </span>
+                  </thead>
+                  <tbody>
+                    {reportFilteredBorrows.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="ad-empty">
+                          No rents in this period.
                         </td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <Pagination
-              page={historyPage}
-              totalPages={Math.max(1, Math.ceil(reportFilteredBorrows.length / PAGE_SIZE))}
-              onPage={setHistoryPage}
-            />
+                    ) : (
+                      reportFilteredBorrows.slice((historyPage - 1) * PAGE_SIZE, historyPage * PAGE_SIZE).map((b) => (
+                        <tr key={b.id}>
+                          <td className="ad-td-main">{b.borrowerName}</td>
+                          <td className="text-sm">
+                            {(b.items || []).map((l) => `${l.itemName} ×${l.quantity}`).join(", ")}
+                          </td>
+                          <td className="text-xs whitespace-nowrap">
+                            {format(tsToDate(b.borrowedAt) || new Date(), "MMM d, yyyy HH:mm")}
+                          </td>
+                          <td className="text-xs whitespace-nowrap">
+                            {b.actualReturnAt
+                              ? format(tsToDate(b.actualReturnAt) || new Date(), "MMM d, yyyy HH:mm")
+                              : "—"}
+                          </td>
+                          <td className="text-right text-xs font-mono">
+                            {b.rentalCharge != null ? `₱${Number(b.rentalCharge).toFixed(2)}` : "—"}
+                          </td>
+                          <td className="text-right text-xs font-mono text-amber-400">
+                            {b.overdueCharge != null && Number(b.overdueCharge) > 0
+                              ? `₱${Number(b.overdueCharge).toFixed(2)}`
+                              : "—"}
+                          </td>
+                          <td className="text-right text-xs font-mono font-semibold">
+                            {b.totalCharge != null ? `₱${Number(b.totalCharge).toFixed(2)}` : "—"}
+                          </td>
+                          <td>
+                            <span
+                              className={`ad-badge ${b.status === "returned" ? "ad-badge-approved" : "ad-badge-pending"
+                                }`}
+                            >
+                              {b.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <Pagination
+                page={historyPage}
+                totalPages={Math.max(1, Math.ceil(reportFilteredBorrows.length / PAGE_SIZE))}
+                onPage={setHistoryPage}
+              />
             </div>
 
             <div className="ad-card overflow-hidden">
@@ -1644,7 +1643,6 @@ export default function InventoryPage() {
                       placeholder="0"
                       required={itemForm.itemType === "rental" || itemForm.itemType === "both"}
                     />
-                    />
                   </div>
                   <div className="af-group">
                     <label className="af-label">Overdue fine (₱ / hour)</label>
@@ -1693,14 +1691,14 @@ export default function InventoryPage() {
             <div className="ad-modal-header">
               <h3>Confirm Return</h3>
               <button type="button" className="ad-modal-close" onClick={() => setReturnModal(null)}>
-                × 
+                ×
               </button>
             </div>
             <div className="ad-modal-form">
               <p className="text-sm text-[var(--ad-muted)] mb-4">
                 Process return for <strong className="text-[var(--ad-text)]">{returnModal.renterName}</strong>?
               </p>
-              
+
               <div className="rounded-lg bg-[var(--ad-surface)] border border-[var(--ad-border)] p-3 space-y-2 text-sm mb-4">
                 <div className="flex justify-between text-[var(--ad-muted)]">
                   <span>Scheduled rental:</span>

@@ -47,7 +47,7 @@ export function calculateEndTime(startTime, durationHours) {
 /** pending / approved / ongoing bookings count as holding the court (case-insensitive). */
 export function isActiveBookingStatus(status) {
   const x = String(status || "").toLowerCase();
-  return x === "pending" || x === "approved" || x === "ongoing";
+  return x === "pending" || x === "approved" || x === "ongoing" || x === "reserved";
 }
 
 /**

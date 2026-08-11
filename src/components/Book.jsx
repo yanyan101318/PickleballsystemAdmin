@@ -127,6 +127,7 @@ export default function Book() {
     
   const [form, setForm] = useState({
     courtId: courtParam || "",
+    courtIds: courtParam ? [courtParam] : [],
     date: format(addDays(new Date(), 1), "yyyy-MM-dd"),
     timeSlot: "",
     customStartTime: "",
@@ -153,18 +154,33 @@ export default function Book() {
   );
 
   const court = useMemo(() => {
-    const raw = activeCourts.find((c) => c.id === form.courtId);
-    if (!raw) return null;
-    return {
-      id: raw.id,
-      name: raw.name || "Court",
-      price: Number(raw.pricePerHour) || 0,
-      type: deriveCourtKind(raw),
-      activeStartTime: raw.activeStartTime,
-      activeEndTime: raw.activeEndTime,
-      rawCourt: raw,
-    };
-  }, [activeCourts, form.courtId]);
+    if (!adminMode) {
+      const raw = activeCourts.find((c) => c.id === form.courtId);
+      if (!raw) return null;
+      return {
+        id: raw.id,
+        name: raw.name || "Court",
+        price: Number(raw.pricePerHour) || 0,
+        type: deriveCourtKind(raw),
+        activeStartTime: raw.activeStartTime,
+        activeEndTime: raw.activeEndTime,
+        rawCourt: raw,
+      };
+    } else {
+      const selectedCourts = activeCourts.filter(c => (form.courtIds || []).includes(c.id));
+      if (selectedCourts.length === 0) return null;
+      return {
+        id: selectedCourts.map(c => c.id).join(","),
+        name: selectedCourts.map(c => c.name || "Court").join(", "),
+        price: selectedCourts.reduce((sum, c) => sum + (Number(c.pricePerHour) || 0), 0),
+        type: selectedCourts.map(c => deriveCourtKind(c)).join(", "),
+        activeStartTime: selectedCourts[0].activeStartTime,
+        activeEndTime: selectedCourts[0].activeEndTime,
+        rawCourt: selectedCourts[0], // fallback for single-court logic
+        allRawCourts: selectedCourts,
+      };
+    }
+  }, [activeCourts, form.courtId, form.courtIds, adminMode]);
 
   
   useEffect(() => {
@@ -186,26 +202,39 @@ export default function Book() {
   useEffect(() => {
     if (activeCourts.length === 0) return;
     setForm((f) => {
-      if (courtParam && activeCourts.some((c) => c.id === courtParam)) {
-        if (f.courtId === courtParam) return f;
-        return { ...f, courtId: courtParam, timeSlot: "" };
+      if (adminMode) {
+        if (f.courtIds && f.courtIds.length > 0) {
+           const validIds = f.courtIds.filter(id => activeCourts.some(c => c.id === id));
+           if (validIds.length === f.courtIds.length) return f;
+           return { ...f, courtIds: validIds.length ? validIds : [activeCourts[0].id], timeSlot: "" };
+        }
+        return { ...f, courtIds: courtParam && activeCourts.some(c => c.id === courtParam) ? [courtParam] : [activeCourts[0].id], timeSlot: "" };
+      } else {
+        if (courtParam && activeCourts.some((c) => c.id === courtParam)) {
+          if (f.courtId === courtParam) return f;
+          return { ...f, courtId: courtParam, timeSlot: "" };
+        }
+        if (activeCourts.some((c) => c.id === f.courtId)) return f;
+        return { ...f, courtId: activeCourts[0].id, timeSlot: "" };
       }
-      if (activeCourts.some((c) => c.id === f.courtId)) return f;
-      return { ...f, courtId: activeCourts[0].id, timeSlot: "" };
     });
-  }, [activeCourts, courtParam]);
+  }, [activeCourts, courtParam, adminMode]);
 
   const loadDayBookings = useCallback(async (currentCourtId, currentDate, signal) => {
     if (!currentCourtId) return;
-    console.log('Checking availability for Court:', currentCourtId);
+    console.log('Checking availability for Court(s):', currentCourtId);
     try {
       const res = await fetch(`/api/bookings?date=${currentDate}&courtId=${encodeURIComponent(currentCourtId)}`, { signal });
       const all = await res.json();
+      const currentCourtIds = String(currentCourtId).split(",");
       const list = all.filter(b => {
         const bCourtId = String(b.courtId || b.court_id || b.courtID || "");
-        return bCourtId === String(currentCourtId) && ["pending", "approved"].includes(String(b.status).toLowerCase());
+        const bCourtIds = bCourtId.split(",");
+        const intersects = currentCourtIds.some(id => bCourtIds.includes(id));
+        return intersects && ["pending", "approved", "reserved"].includes(String(b.status).toLowerCase());
       }).map(b => ({
         id: b.id,
+        courtId: b.courtId || b.court_id || b.courtID || "",
         timeSlot: b.timeSlot,
         startTime: b.startTime || b.timeSlot,
         duration: Number(b.duration) || 1,
@@ -224,15 +253,16 @@ export default function Book() {
       if (!adminMode) navigate("/login");
       return;
     }
-    if (!form.courtId) return;
+    const courtIdToLoad = adminMode ? (form.courtIds || []).join(",") : form.courtId;
+    if (!courtIdToLoad) return;
     
     const abortController = new AbortController();
-    loadDayBookings(form.courtId, form.date, abortController.signal);
+    loadDayBookings(courtIdToLoad, form.date, abortController.signal);
     
     return () => {
       abortController.abort();
     };
-  }, [form.courtId, form.date, user, adminMode, navigate, loadDayBookings]);
+  }, [form.courtId, form.courtIds, form.date, user, adminMode, navigate, loadDayBookings]);
 
   /**
    * Real-time add-ons from `inventoryItems`.
@@ -533,7 +563,7 @@ export default function Book() {
           : null;
 
       const bookingBase = {
-        courtId: form.courtId,
+        courtId: adminMode ? (form.courtIds || []).join(",") : form.courtId,
         courtName: court.name,
         date: form.date,
         timeSlot: actualTimeSlot,
@@ -547,7 +577,7 @@ export default function Book() {
         contactNumber: String(form.contactNumber).trim(),
         email: String(form.email ?? "").trim() || null,
         userId: user.uid,
-        status: form.paymentMethod === PAYMENT_CASH ? "Approved" : "Pending",
+        status: form.paymentMethod === PAYMENT_CASH ? "Approved" : (adminMode ? "Reserved" : "Pending"),
         createdAt: new Date().toISOString(),
         promoCode: appliedPromo?.code || null,
         paymentMethod: form.paymentMethod,
@@ -573,7 +603,7 @@ export default function Book() {
         bookingId: null,
         userId: user.uid,
         name: form.playerName,
-        courtId: form.courtId,
+        courtId: adminMode ? (form.courtIds || []).join(",") : form.courtId,
         courtName: court.name,
         date: form.date,
         timeSlot: actualTimeSlot,
@@ -867,15 +897,29 @@ export default function Book() {
                             <button
                               key={c.id}
                               type="button"
-                              onClick={() => setForm({ ...form, courtId: c.id, timeSlot: "" })}
-                              className={`p-4 rounded-xl border text-left transition-all ${form.courtId === c.id
-                                  ? "border-green-500 bg-green-500/10"
-                                  : "border-slate-700 bg-slate-800 hover:border-slate-600"
+                              onClick={() => {
+                                if (adminMode) {
+                                  setForm((f) => {
+                                    const ids = f.courtIds || [];
+                                    if (ids.includes(c.id)) {
+                                      if (ids.length === 1) return f;
+                                      return { ...f, courtIds: ids.filter(id => id !== c.id), timeSlot: "" };
+                                    }
+                                    return { ...f, courtIds: [...ids, c.id], timeSlot: "" };
+                                  });
+                                } else {
+                                  setForm({ ...form, courtId: c.id, timeSlot: "" });
+                                }
+                              }}
+                              className={`p-4 rounded-xl border text-left transition-all ${
+                                adminMode 
+                                  ? (form.courtIds || []).includes(c.id) ? "border-green-500 bg-green-500/10" : "border-slate-700 bg-slate-800 hover:border-slate-600"
+                                  : form.courtId === c.id ? "border-green-500 bg-green-500/10" : "border-slate-700 bg-slate-800 hover:border-slate-600"
                                 }`}
                             >
                               <div className="flex items-center justify-between mb-1">
                                 <span className="text-white font-medium text-sm">{c.name}</span>
-                                {form.courtId === c.id && <Check size={14} className="text-green-400" />}
+                                {(adminMode ? (form.courtIds || []).includes(c.id) : form.courtId === c.id) && <Check size={14} className="text-green-400" />}
                               </div>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${kindClass}`}>
                                 {kind}

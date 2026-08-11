@@ -18,8 +18,12 @@ function registerRoutes(app) {
       const clauses = [];
       const vals = [];
       if (courtId) {
-        vals.push(courtId);
-        clauses.push(`court_id = $${vals.length}`);
+        const ids = courtId.split(",");
+        const subclauses = ids.map(id => {
+          vals.push(`%${id}%`);
+          return `court_id LIKE $${vals.length}`;
+        });
+        clauses.push(`(${subclauses.join(" OR ")})`);
       }
       if (courtName) {
         vals.push(courtName);
@@ -115,8 +119,12 @@ function registerRoutes(app) {
       const clauses = [];
       const vals = [];
       if (courtId) {
-        vals.push(courtId);
-        clauses.push(`court_id = $${vals.length}`);
+        const ids = courtId.split(",");
+        const subclauses = ids.map(id => {
+          vals.push(`%${id}%`);
+          return `court_id LIKE $${vals.length}`;
+        });
+        clauses.push(`(${subclauses.join(" OR ")})`);
       }
       if (courtName) {
         vals.push(courtName);

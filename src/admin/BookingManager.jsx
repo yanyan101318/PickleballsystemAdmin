@@ -160,6 +160,25 @@ function formatDateForInput(dateStr) {
   return dateStr;
 }
 
+function calculateEndTime(timeSlot, duration) {
+  if (!timeSlot || !duration) return null;
+  const match = String(timeSlot).match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return null;
+  let [, hh, mm, ap] = match;
+  hh = parseInt(hh, 10);
+  mm = parseInt(mm, 10);
+  if (ap.toUpperCase() === 'PM' && hh !== 12) hh += 12;
+  if (ap.toUpperCase() === 'AM' && hh === 12) hh = 0;
+  
+  const totalMinutes = hh * 60 + mm + Math.round(Number(duration) * 60);
+  const endH = Math.floor(totalMinutes / 60) % 24;
+  const endM = totalMinutes % 60;
+  const endAp = endH >= 12 ? 'PM' : 'AM';
+  let dispH = endH % 12;
+  if (dispH === 0) dispH = 12;
+  return `${String(dispH).padStart(2, '0')}:${String(endM).padStart(2, '0')} ${endAp}`;
+}
+
 export default function BookingManager() {
   const wrapSync = async (p) => p;
   const EMPTY_BALANCE_MODAL = { open: false, booking: null, amount: "", method: "cash" };
@@ -283,21 +302,27 @@ export default function BookingManager() {
       if (editDraft.duration !== selected.duration) updateData.duration = Number(editDraft.duration);
       if (editDraft.playerName !== selected.playerName) updateData.player_name = editDraft.playerName;
       if (editDraft.contactNumber !== selected.contactNumber) updateData.contact_number = editDraft.contactNumber;
-      if (editDraft.totalAmount !== selected.totalAmount) updateData.total_amount = Number(editDraft.totalAmount);
 
-      if (Object.keys(updateData).length === 0) {
+      const isTotalChanged = (Number(editDraft.totalAmount) !== Number(selected.totalAmount));
+      if (Object.keys(updateData).length === 0 && !isTotalChanged) {
         toast.error("No changes made.");
         setActing(null);
         return;
       }
 
-      const res = await fetch(`/api/bookings/${selected.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updateData),
-      });
-      if (!res.ok) throw new Error("Failed to update booking");
-      
+      const items = selected._isGroup ? selected.groupBookings : [selected];
+      await Promise.all(items.map(b => {
+        const payload = { ...updateData };
+        if (isTotalChanged) {
+           payload.total_amount = Number(editDraft.totalAmount) / items.length;
+        }
+        return fetch(`/api/bookings/${b.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }));
+
       toast.success("Booking updated successfully.");
       await loadBookings();
       window.dispatchEvent(new CustomEvent("bookings:updated"));
@@ -334,7 +359,7 @@ export default function BookingManager() {
   const [savingPaid, setSavingPaid] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editDraft, setEditDraft] = useState({});
-  const [deleteConfirmModal, setDeleteConfirmModal] = useState({ open: false, id: null, label: "", linkedPayments: 0 });
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState({ open: false, targetBooking: null, label: "", linkedPayments: 0 });
 
 
   useEffect(() => {
@@ -543,20 +568,24 @@ export default function BookingManager() {
   }
 
 
-  async function setStatus(id, status) {
-    setActing(id);
+  async function setStatus(targetBooking, status) {
+    const isGroup = targetBooking._isGroup;
+    const items = isGroup ? targetBooking.groupBookings : [targetBooking];
+    setActing(targetBooking.id);
     try {
-      await fetch(`/api/bookings/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status })
-      });
+      await Promise.all(items.map(b => 
+        fetch(`/api/bookings/${b.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status })
+        })
+      ));
       
-      const b = bookings.find(x => x.id === id) || selected;
-      if (b && status === "Approved") {
-        const phone = await resolveBookingContactNumber(db, b);
-        const smsMsg = `Good day!! This is PICKLE BROS COURT: Your booking at ${b.courtName || "the court"} on ${formatDateForDisplay(b.date)} for ${b.timeSlot} has been APPROVED. Please arrive on your scheduled time. thank you and God bless`;
-        const smsRes = await sendBookingSMS(id, phone, smsMsg);
+      if (status === "Approved") {
+        const phone = await resolveBookingContactNumber(db, targetBooking);
+        const courtsText = isGroup ? targetBooking.displayCourts.join(", ") : (targetBooking.courtName || "the court");
+        const smsMsg = `Good day!! This is PICKLE BROS COURT: Your booking at ${courtsText} on ${formatDateForDisplay(targetBooking.date)} for ${targetBooking.timeSlot} has been APPROVED. Please arrive on your scheduled time. thank you and God bless`;
+        const smsRes = await sendBookingSMS(targetBooking.id, phone, smsMsg);
         if (smsRes.success) {
           toast.success("Booking approved and SMS sent");
         } else {
@@ -612,31 +641,36 @@ export default function BookingManager() {
     }
   }
 
-  async function promptRemoveBooking(id) {
-    const row = bookings.find((b) => b.id === id) ?? selected;
-    const label = row?.playerName || row?.courtName || "this booking";
-    let linkedSnap;
+  async function promptRemoveBooking(targetBooking) {
+    const row = targetBooking;
+    const label = row?.playerName || (row._isGroup ? row.displayCourts.join(", ") : row?.courtName) || "this booking";
+    const items = row._isGroup ? row.groupBookings : [row];
+    let linkedPayments = 0;
     try {
-      linkedSnap = await getDocs(
-        query(collection(db, "payments"), where("bookingId", "==", id))
-      );
+      for (const b of items) {
+        const linkedSnap = await getDocs(
+          query(collection(db, "payments"), where("bookingId", "==", b.id))
+        );
+        linkedPayments += (linkedSnap.docs ? linkedSnap.docs.length : (linkedSnap.size || 0));
+      }
     } catch (e) {
       console.error(e);
       toast.error("Could not load linked payment data. Try again.");
       return;
     }
-    const linkedPayments = linkedSnap.docs ? linkedSnap.docs.length : (linkedSnap.size || 0);
-    setDeleteConfirmModal({ open: true, id, label, linkedPayments });
+    setDeleteConfirmModal({ open: true, targetBooking, label, linkedPayments });
   }
 
   async function executeRemoveBooking() {
-    const { id } = deleteConfirmModal;
-    if (!id) return;
-    setActing(id);
+    const { targetBooking } = deleteConfirmModal;
+    if (!targetBooking) return;
+    setActing(targetBooking.id);
     try {
+      const items = targetBooking._isGroup ? targetBooking.groupBookings : [targetBooking];
       const batch = writeBatch(db);
-      // Server automatically deletes linked payments when deleting a booking
-      batch.delete(doc(db, "bookings", id));
+      for (const b of items) {
+        batch.delete(doc(db, "bookings", b.id));
+      }
 
       await wrapSync(batch.commit(), {
         successMsg: "Booking deleted permanently.",
@@ -645,7 +679,7 @@ export default function BookingManager() {
       });
       
       toast.success("Booking deleted permanently.");
-      setDeleteConfirmModal({ open: false, id: null, label: "", linkedPayments: 0 });
+      setDeleteConfirmModal({ open: false, targetBooking: null, label: "", linkedPayments: 0 });
       await loadBookings();
       window.dispatchEvent(new CustomEvent("bookings:updated"));
     } catch (err) {
@@ -653,7 +687,7 @@ export default function BookingManager() {
       toast.error("Could not delete this booking. Check your connection and permissions.");
     }
     setActing(null);
-    if (selected && selected.id === id) {
+    if (selected && selected.id === targetBooking.id) {
       setSelected(null);
     }
   }
@@ -680,14 +714,17 @@ export default function BookingManager() {
     if (!linkedPayment) return;
     setActing("payment_approve");
     try {
+      const items = selected._isGroup ? selected.groupBookings : [selected];
       const batch = writeBatch(db);
       batch.update(doc(db, "payments", linkedPayment.id), {
         paymentStatus: "Approved",
         reviewedAt: serverTimestamp()
       });
-      batch.update(doc(db, "bookings", selected.id), {
-        status: "Confirmed"
-      });
+      for (const b of items) {
+        batch.update(doc(db, "bookings", b.id), {
+          status: "Confirmed"
+        });
+      }
       await wrapSync(batch.commit(), {
         successMsg: "Payment approved successfully",
         offlineMsg: "Approval queued for sync",
@@ -695,7 +732,8 @@ export default function BookingManager() {
       });
 
       setActing("payment_approve_sms");
-      const smsMsg = `Good day!! This is PICKLE BROS COURT: Your booking at ${selected.courtName || "the court"} on ${formatDateForDisplay(selected.date)} for ${selected.timeSlot} has been APPROVED. Please arrive on your scheduled time. thank you and God bless`;
+      const courtsText = selected._isGroup ? selected.displayCourts.join(", ") : (selected.courtName || "the court");
+      const smsMsg = `Good day!! This is PICKLE BROS COURT: Your booking at ${courtsText} on ${formatDateForDisplay(selected.date)} for ${selected.timeSlot} has been APPROVED. Please arrive on your scheduled time. thank you and God bless`;
       const phone = await resolveBookingContactNumber(db, selected);
       const smsRes = await sendBookingSMS(selected.id, phone, smsMsg);
 
@@ -727,6 +765,7 @@ export default function BookingManager() {
     }
     setActing("payment_reject");
     try {
+      const items = selected._isGroup ? selected.groupBookings : [selected];
       const batch = writeBatch(db);
       if (linkedPayment) {
         batch.update(doc(db, "payments", linkedPayment.id), {
@@ -735,9 +774,11 @@ export default function BookingManager() {
           reviewedAt: serverTimestamp()
         });
       }
-      batch.update(doc(db, "bookings", selected.id), {
-        status: "Rejected"
-      });
+      for (const b of items) {
+        batch.update(doc(db, "bookings", b.id), {
+          status: "Rejected"
+        });
+      }
       await wrapSync(batch.commit(), {
         successMsg: linkedPayment ? "Payment rejected" : "Booking rejected",
         offlineMsg: "Rejection queued for sync",
@@ -778,13 +819,16 @@ export default function BookingManager() {
     if (!linkedPayment) return;
     setActing("payment_pending");
     try {
+      const items = selected._isGroup ? selected.groupBookings : [selected];
       const batch = writeBatch(db);
       batch.update(doc(db, "payments", linkedPayment.id), {
         paymentStatus: "Pending"
       });
-      batch.update(doc(db, "bookings", selected.id), {
-        status: "Pending Review"
-      });
+      for (const b of items) {
+        batch.update(doc(db, "bookings", b.id), {
+          status: "Pending Review"
+        });
+      }
       await wrapSync(batch.commit(), {
         successMsg: "Marked as pending review",
         offlineMsg: "Update queued for sync"
@@ -816,10 +860,40 @@ export default function BookingManager() {
     return true;
   });
 
-  const sorted = [...filtered].sort((a, b) => {
+  const groupedMap = new Map();
+  for (const b of filtered) {
+    // Also include a fallback to b.id if date/time are entirely missing so it doesn't group randomly
+    const key = (b.playerName && b.timeSlot) 
+      ? `${b.playerName}|${bookingDayString(b, toDateMs) || ''}|${b.timeSlot}`
+      : b.id;
+    if (!groupedMap.has(key)) groupedMap.set(key, []);
+    groupedMap.get(key).push(b);
+  }
+
+  const grouped = Array.from(groupedMap.values()).map(group => {
+    const primary = group[0];
+    const allCourts = group.flatMap(b => String(b.courtName ?? b.courtId ?? "—").split(",").map(s => s.trim()));
+    const totalAmount = group.reduce((sum, b) => sum + (Number(b.totalAmount) || 0), 0);
+    const amountPaid = group.reduce((sum, b) => sum + (Number(b.amountPaid) || 0), 0);
+    const remainingBalance = group.reduce((sum, b) => sum + (Number(b.remainingBalance) || 0), 0);
+    const computedEndTime = primary.endTime || calculateEndTime(primary.timeSlot, primary.duration);
+    
+    return {
+      ...primary,
+      _isGroup: true,
+      groupBookings: group,
+      displayCourts: allCourts,
+      totalAmount,
+      amountPaid,
+      remainingBalance,
+      endTime: computedEndTime
+    };
+  });
+
+  const sorted = [...grouped].sort((a, b) => {
     if (sortByDate.startsWith("created")) {
-      const aTime = a.createdAt?.toMillis?.() || 0;
-      const bTime = b.createdAt?.toMillis?.() || 0;
+      const aTime = new Date(a.createdAt).getTime() || a.createdAt?.toMillis?.() || 0;
+      const bTime = new Date(b.createdAt).getTime() || b.createdAt?.toMillis?.() || 0;
       const diff = aTime - bTime;
       return sortByDate === "created_asc" ? diff : -diff;
     } else {
@@ -948,7 +1022,11 @@ export default function BookingManager() {
               {paged.map(b => (
                 <tr key={b.id} className="ad-table-row" onClick={() => setSelected(b)}>
                   <td className="ad-td-main">{b.playerName ?? "—"}</td>
-                  <td>{b.courtName ?? b.courtId ?? "—"}</td>
+                  <td>
+                    {(b.displayCourts || String(b.courtName ?? b.courtId ?? "—").split(",")).map((name, i) => (
+                      <div key={i}>{name.trim()}</div>
+                    ))}
+                  </td>
                   <td>{formatDateForDisplay(b.date)}</td>
                   <td>{b.timeSlot ?? "—"}</td>
                   <td>{b.endTime ?? "—"}</td>
@@ -972,7 +1050,7 @@ export default function BookingManager() {
                       {b.status !== "Approved" && (
                         <button className="ad-btn ad-btn-sm ad-btn-success"
                           disabled={acting === b.id}
-                          onClick={() => setStatus(b.id, "Approved")}>
+                          onClick={() => setStatus(b, "Approved")}>
                           ✓ Approve
                         </button>
                       )}
@@ -995,7 +1073,7 @@ export default function BookingManager() {
                         disabled={acting === b.id}
                         onClick={(e) => {
                           e.stopPropagation();
-                          promptRemoveBooking(b.id);
+                          promptRemoveBooking(b);
                         }}
                         title="Remove this booking record"
                       >
@@ -1062,7 +1140,14 @@ export default function BookingManager() {
                         <strong>{resolvedContact ?? selected.contactNumber ?? "—"}</strong>
                       )}
                     </div>
-                    <div className="ad-detail-row"><span>Court</span><strong>{selected.courtName ?? selected.courtId ?? '—'}</strong></div>
+                    <div className="ad-detail-row">
+                      <span>Court</span>
+                      <strong>
+                        {(selected.displayCourts || String(selected.courtName ?? selected.courtId ?? "—").split(",")).map((name, i) => (
+                          <div key={i}>{name.trim()}</div>
+                        ))}
+                      </strong>
+                    </div>
                     <div className="ad-detail-row">
                       <span>Date</span>
                       {editMode ? (
@@ -1208,7 +1293,7 @@ export default function BookingManager() {
                   type="button"
                   className="ad-btn ad-btn-outline ad-btn-sm"
                   disabled={acting === selected.id}
-                  onClick={() => promptRemoveBooking(selected.id)}
+                  onClick={() => promptRemoveBooking(selected)}
                 >
                   Delete Booking
                 </button>
@@ -1331,7 +1416,7 @@ export default function BookingManager() {
                       className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-2.5 px-4 rounded-lg transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50"
                       onClick={() => {
                         if (linkedPayment) approvePayment();
-                        else setStatus(selected.id, "Approved");
+                        else setStatus(selected, "Approved");
                       }}
                       disabled={acting || selected.status === "Approved" || selected.status === "Confirmed"}
                     >
