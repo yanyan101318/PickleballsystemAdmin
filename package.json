@@ -30,12 +30,13 @@
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.13.2",
     "recharts": "^3.10.0",
+    "socket.io-client": "^4.8.3",
     "tailwindcss": "^3.4.19",
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5"
   },
   "scripts": {
-    "start": "concurrently \"node server.js\" \"react-scripts start\"",
+    "start": "concurrently -n SRV,WEB -c blue,cyan \"node server.js\" \"react-scripts start\"",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
@@ -99,7 +100,7 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.4.27",
-    "concurrently": "^9.1.2",
+    "concurrently": "^9.2.4",
     "cross-env": "^7.0.3",
     "electron": "^33.4.0",
     "electron-builder": "^25.1.8",

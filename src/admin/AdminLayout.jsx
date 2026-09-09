@@ -10,6 +10,7 @@ const NAV_LINKS = [
   { to: "/admin/dashboard", label: "Dashboard" },
   { to: "/admin/schedule", label: "Schedule" },
   { to: "/admin/courts", label: "Courts" },
+  // { to: "/admin/lights", label: "Lights" },
 ];
 
 const BOOKING_SUBLINKS = [

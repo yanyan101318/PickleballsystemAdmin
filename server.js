@@ -10,7 +10,8 @@ const tournamentV2Routes = require("./server/tournamentV2Routes");
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use("/api/tournaments-v2", tournamentV2Routes);
 
 async function ensureDatabaseSchema() {
@@ -146,6 +147,21 @@ async function ensureDatabaseSchema() {
 
         CREATE INDEX IF NOT EXISTS idx_messages_chat_created_at ON messages (chat_id, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats (user_id);
+        
+        ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_edited BOOLEAN DEFAULT false;
+        ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN DEFAULT false;
+        ALTER TABLE messages ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN DEFAULT false;
+        ALTER TABLE messages ADD COLUMN IF NOT EXISTS reactions JSONB DEFAULT '{}';
+        ALTER TABLE messages ADD COLUMN IF NOT EXISTS image TEXT;
+        ALTER TABLE messages ADD COLUMN IF NOT EXISTS group_id VARCHAR(255);
+
+        CREATE TABLE IF NOT EXISTS message_reports (
+          id VARCHAR(255) PRIMARY KEY,
+          message_id VARCHAR(255) REFERENCES messages(id) ON DELETE CASCADE,
+          reporter_id VARCHAR(255),
+          reason TEXT,
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        );
       `);
     } catch (err) {
     console.error("Database schema migration failed:", err.message);
@@ -326,7 +342,12 @@ app.get('/api/chats/admin/chats/:chatId/messages', async (req, res) => {
         senderId: m.sender_id,
         senderName: m.sender_name,
         text: m.text,
-        createdAt: m.created_at
+        createdAt: m.created_at,
+        isEdited: m.is_edited,
+        isDeleted: m.is_deleted,
+        isPinned: m.is_pinned,
+        reactions: m.reactions || {},
+        image: m.image
       })),
       nextCursor
     });
@@ -348,29 +369,162 @@ app.post('/api/chats/admin/chats/:chatId/mark-read', async (req, res) => {
 
 app.post('/api/chats/admin/chats/:chatId/messages', async (req, res) => {
   try {
-    const { text, senderName } = req.body;
-    const { chatId } = req.params;
+    const { text, senderName, image, groupId } = req.body;
+    if (!text && !image) {
+      return res.status(400).json({ error: 'Message cannot be empty' });
+    }
+    const chatId = req.params.chatId;
     
     await pool.query(
       'UPDATE chats SET last_message = $1, last_message_at = NOW(), unread_by_admin = false, unread_by_customer = true WHERE id = $2',
-      [text, chatId]
+      [text || 'Sent an image', chatId]
     );
 
     const msgId = 'msg_' + Date.now().toString(36) + Math.random().toString(36).substring(2);
     const msg = await pool.query(
-      'INSERT INTO messages (id, chat_id, sender_id, sender_name, text) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [msgId, chatId, 'admin', senderName || 'Admin', text]
+      'INSERT INTO messages (id, chat_id, sender_id, sender_name, text, image, group_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [msgId, chatId, 'admin', senderName || 'Admin', text, image, groupId || null]
     );
 
-    res.json({
+    const formattedMsg = {
       id: msg.rows[0].id,
+      chatId: msg.rows[0].chat_id,
       senderId: msg.rows[0].sender_id,
       senderName: msg.rows[0].sender_name,
       text: msg.rows[0].text,
-      createdAt: msg.rows[0].created_at
-    });
+      createdAt: msg.rows[0].created_at,
+      isEdited: false,
+      isDeleted: false,
+      isPinned: false,
+      reactions: {},
+      image: msg.rows[0].image,
+      groupId: msg.rows[0].group_id
+    };
+
+    // Broadcast event to User app's Socket.io server via Postgres NOTIFY
+    await pool.query(`SELECT pg_notify('chat_events', $1)`, [
+      JSON.stringify({
+        event: 'messageCreated',
+        chatId,
+        payload: formattedMsg
+      })
+    ]);
+
+    res.json(formattedMsg);
   } catch (error) {
     console.error("Error sending admin message:", error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Edit admin message
+app.put('/api/chats/admin/chats/:chatId/messages/:messageId', async (req, res) => {
+  try {
+    const { text } = req.body;
+    const { chatId, messageId } = req.params;
+    
+    const msg = await pool.query(
+      'UPDATE messages SET text = $1, is_edited = true WHERE id = $2 AND chat_id = $3 RETURNING *',
+      [text, messageId, chatId]
+    );
+    
+    if (msg.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    
+    const formattedMsg = {
+      id: msg.rows[0].id,
+      chatId: msg.rows[0].chat_id,
+      text: msg.rows[0].text,
+      isEdited: msg.rows[0].is_edited
+    };
+    
+    await pool.query(`SELECT pg_notify('chat_events', $1)`, [JSON.stringify({ event: 'messageEdited', chatId, payload: formattedMsg })]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error editing message:", error);
+    res.status(500).json({ error: 'Server error', details: error.message });
+  }
+});
+
+// Delete message (Admin can delete any message in the chat)
+app.delete('/api/chats/admin/chats/:chatId/messages/:messageId', async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+    
+    // First, check if the message has a group_id
+    const check = await pool.query('SELECT group_id FROM messages WHERE id = $1 AND chat_id = $2', [messageId, chatId]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    const groupId = check.rows[0].group_id;
+
+    if (groupId) {
+      const msgs = await pool.query(
+        'UPDATE messages SET text = $1, is_deleted = true, image = NULL WHERE group_id = $2 AND chat_id = $3 RETURNING *',
+        ['This message was deleted by Admin', groupId, chatId]
+      );
+      for (const row of msgs.rows) {
+        await pool.query(`SELECT pg_notify('chat_events', $1)`, [JSON.stringify({ event: 'messageDeleted', chatId, payload: { id: row.id, chatId, groupId } })]);
+      }
+    } else {
+      const msg = await pool.query(
+        'UPDATE messages SET text = $1, is_deleted = true, image = NULL WHERE id = $2 AND chat_id = $3 RETURNING *',
+        ['This message was deleted by Admin', messageId, chatId]
+      );
+      if (msg.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+      await pool.query(`SELECT pg_notify('chat_events', $1)`, [JSON.stringify({ event: 'messageDeleted', chatId, payload: { id: messageId, chatId } })]);
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting message:", error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Pin/Unpin message
+app.post('/api/chats/admin/chats/:chatId/messages/:messageId/pin', async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+    const check = await pool.query('SELECT is_pinned FROM messages WHERE id = $1 AND chat_id = $2', [messageId, chatId]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    
+    const newStatus = !check.rows[0].is_pinned;
+    const msg = await pool.query(
+      'UPDATE messages SET is_pinned = $1 WHERE id = $2 RETURNING *',
+      [newStatus, messageId]
+    );
+    
+    await pool.query(`SELECT pg_notify('chat_events', $1)`, [JSON.stringify({ event: 'messagePinned', chatId, payload: { id: messageId, chatId, isPinned: newStatus } })]);
+    res.json({ success: true, isPinned: newStatus });
+  } catch (error) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// React to message
+app.post('/api/chats/admin/chats/:chatId/messages/:messageId/react', async (req, res) => {
+  try {
+    const { chatId, messageId } = req.params;
+    const { emoji } = req.body;
+    
+    const check = await pool.query('SELECT reactions FROM messages WHERE id = $1 AND chat_id = $2', [messageId, chatId]);
+    if (check.rows.length === 0) return res.status(404).json({ error: 'Not found' });
+    
+    let reactions = check.rows[0].reactions || {};
+    const adminId = 'admin'; // Use a generic admin ID for reactions
+    
+    if (!reactions[emoji]) reactions[emoji] = [];
+    const userIndex = reactions[emoji].indexOf(adminId);
+    if (userIndex > -1) {
+      reactions[emoji].splice(userIndex, 1);
+      if (reactions[emoji].length === 0) delete reactions[emoji];
+    } else {
+      reactions[emoji].push(adminId);
+    }
+    
+    await pool.query('UPDATE messages SET reactions = $1 WHERE id = $2', [JSON.stringify(reactions), messageId]);
+    
+    await pool.query(`SELECT pg_notify('chat_events', $1)`, [JSON.stringify({ event: 'messageReacted', chatId, payload: { id: messageId, chatId, reactions } })]);
+    res.json({ success: true, reactions });
+  } catch (error) {
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -996,16 +1150,45 @@ setInterval(async () => {
               message: `Hi ${record.borrower_name}, your equipment rental is due in 15 minutes. Please return it to avoid extra charges!` 
             } 
           };
+          let smsSuccess = true;
+          let smsData = null;
           const fakeRes = { 
-            status: () => ({ json: () => {} }),
-            json: () => {}
+            status: (code) => { 
+              if (code !== 200) smsSuccess = false; 
+              return fakeRes; 
+            },
+            json: (data) => { 
+              if (data && data.success === false) smsSuccess = false; 
+              smsData = data;
+              return fakeRes; 
+            }
           };
           
           try {
             await sendSms(fakeReq, fakeRes);
-            console.log(`[SMS Reminder] Sent to ${record.contact_number} for record ${record.id}`);
+            if (smsSuccess) {
+              console.log(`[SMS Reminder] Sent to ${record.contact_number} for record ${record.id}`);
+            } else {
+              console.error(`[SMS Reminder] Failed to send for record ${record.id}:`, smsData);
+            }
+            await pool.query(
+              `INSERT INTO sms_logs (booking_id, phone_number, phone_raw, message, status, api_response)
+               VALUES ($1,$2,$3,$4,$5,$6)`,
+              [
+                record.id, 
+                record.contact_number, 
+                record.contact_number, 
+                fakeReq.body.message, 
+                smsSuccess ? 'success' : 'failed',
+                smsData ? JSON.stringify(smsData) : null
+              ]
+            );
           } catch (e) {
             console.error(`[SMS Reminder] Failed to send for record ${record.id}:`, e);
+            await pool.query(
+              `INSERT INTO sms_logs (booking_id, phone_number, phone_raw, message, status) VALUES ($1,$2,$3,$4,$5)`,
+              [record.id, record.contact_number, record.contact_number, fakeReq.body.message, 'failed']
+            );
           }
         }
         await pool.query('UPDATE borrow_records SET reminder_sent = TRUE WHERE id = $1', [record.id]);
@@ -1017,6 +1200,69 @@ setInterval(async () => {
 }, 60 * 1000);
 
 
+
+
+// ---------------------------------------------------------------------------
+// Node-RED Proxy Routes
+// All hardware control calls go through here so the browser never makes a
+// cross-origin request directly to Node-RED (avoids CORS errors).
+// ---------------------------------------------------------------------------
+const NODE_RED_ORIGIN = process.env.REACT_APP_NODE_RED_URL || 'http://127.0.0.1:1880';
+
+/** Ping – lets the UI check whether Node-RED is reachable. */
+app.get('/api/nodered/ping', async (req, res) => {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    await fetch(`${NODE_RED_ORIGIN}/`, { method: 'HEAD', signal: controller.signal });
+    clearTimeout(timeout);
+    res.json({ connected: true });
+  } catch (_) {
+    res.json({ connected: false });
+  }
+});
+
+const axios = require('axios');
+const https = require('https');
+const ipv4Agent = new https.Agent({ family: 4 });
+
+/** Forward POST /api/lights/cloud → TIS Cloud API */
+app.post('/api/lights/cloud', async (req, res) => {
+  try {
+    const upstream = await axios.post('https://tissmarthomeapi.web.app/api/v1/devices/action', req.body, {
+      headers: {
+        'apikey': req.headers['apikey'] || '',
+        'Content-Type': 'application/json'
+      },
+      timeout: 8000,
+      httpsAgent: ipv4Agent
+    });
+    res.json(upstream.data);
+  } catch (err) {
+    console.error('TIS Cloud API (/devices/action) error:', err.message);
+    res.status(err.response ? err.response.status : 500).json({ error: 'Failed to reach TIS cloud api', details: err.message });
+  }
+});
+
+/** Forward POST /api/lights/devices → TIS Cloud API */
+app.post('/api/lights/devices', async (req, res) => {
+  try {
+    const upstream = await axios.post('https://tissmarthomeapi.web.app/api/v1/get_devices/all', req.body || {}, {
+      headers: {
+        'apikey': req.headers['apikey'] || '',
+        'Content-Type': 'application/json'
+      },
+      timeout: 8000,
+      httpsAgent: ipv4Agent
+    });
+    res.json(upstream.data);
+  } catch (err) {
+    console.error('TIS Cloud API (/get_devices/all) error:', err.message);
+    res.status(err.response ? err.response.status : 500).json({ error: 'Failed to reach TIS cloud api', details: err.message });
+  }
+});
+
+// ---------------------------------------------------------------------------
 
 ensureDatabaseSchema().then(() => {
   app.listen(PORT, "127.0.0.1", () => {

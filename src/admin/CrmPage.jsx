@@ -30,15 +30,47 @@ export default function CrmPage() {
   }, []);
 
   const historyForSelected = useMemo(() => {
-    if (!selected?.user_id) return [];
+    if (!selected) return [];
     return bookings
-      .filter((b) => b.user_id === selected.user_id)
+      .filter((b) => {
+        if (selected.user_id && (b.userId === selected.user_id || b.user_id === selected.user_id)) return true;
+        if (selected.id && (b.userId === selected.id || b.user_id === selected.id)) return true;
+        if (selected.email && b.email && selected.email.toLowerCase() === b.email.toLowerCase()) return true;
+        if (selected.contact_number && (b.contactNumber === selected.contact_number || b.contact_number === selected.contact_number)) return true;
+        if (selected.full_name && (b.playerName === selected.full_name || b.player_name === selected.full_name)) return true;
+        return false;
+      })
       .slice(0, 40);
   }, [bookings, selected]);
 
+  const enrichedCustomers = useMemo(() => {
+    return customers.map(c => {
+      const cBookings = bookings.filter((b) => {
+        if (c.user_id && (b.userId === c.user_id || b.user_id === c.user_id)) return true;
+        if (c.id && (b.userId === c.id || b.user_id === c.id)) return true;
+        if (c.email && b.email && c.email.toLowerCase() === b.email.toLowerCase()) return true;
+        if (c.contact_number && (b.contactNumber === c.contact_number || b.contact_number === c.contact_number)) return true;
+        if (c.full_name && (b.playerName === c.full_name || b.player_name === c.full_name)) return true;
+        return false;
+      });
+
+      const validBookings = cBookings.filter(b => b.status !== "Rejected" && b.status !== "Cancelled");
+      
+      const calcSpent = validBookings.reduce((sum, b) => {
+        return sum + Number(b.totalAmount ?? b.total_amount ?? b.amountPaid ?? b.amount_paid ?? 0);
+      }, 0);
+
+      return {
+        ...c,
+        total_bookings: validBookings.length,
+        total_spent: calcSpent
+      };
+    });
+  }, [customers, bookings]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return customers.filter((c) => {
+    return enrichedCustomers.filter((c) => {
       const spent = Number(c.total_spent) || 0;
       const matchFilter =
         filter === "All" ||
@@ -51,7 +83,7 @@ export default function CrmPage() {
         (c.email || "").toLowerCase().includes(q);
       return matchFilter && matchSearch;
     });
-  }, [customers, search, filter]);
+  }, [enrichedCustomers, search, filter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -170,10 +202,10 @@ export default function CrmPage() {
                   )}
                   {historyForSelected.map((b) => (
                     <tr key={b.id}>
-                      <td>{b.booking_date ?? "—"}</td>
-                      <td>{b.court_name ?? b.court_id}</td>
-                      <td>₱{roundMoney(Number(b.total_amount ?? b.amount_paid ?? 0)).toFixed(2)}</td>
-                      <td className="capitalize">{b.customer_payment_status ?? "—"}</td>
+                      <td>{b.date ?? b.booking_date ?? "—"}</td>
+                      <td>{b.courtName ?? b.court_name ?? b.courtId ?? b.court_id}</td>
+                      <td>₱{roundMoney(Number(b.totalAmount ?? b.total_amount ?? b.amountPaid ?? b.amount_paid ?? 0)).toFixed(2)}</td>
+                      <td className="capitalize">{b.customerPaymentStatus ?? b.customer_payment_status ?? "—"}</td>
                     </tr>
                   ))}
                 </tbody>

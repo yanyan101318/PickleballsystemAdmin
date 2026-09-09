@@ -12,6 +12,7 @@ import AdminLayout          from "./admin/AdminLayout";
 import AdminDashboard       from "./admin/AdminDashboard";
 import CourtManager         from "./admin/CourtManager";
 import BookingManager       from "./admin/BookingManager";
+import Lights               from "./pages/Lights";
 import Analytics            from "./admin/Analytics";
 import CrmPage              from "./admin/CrmPage";
 import MembershipRequests   from "./admin/MembershipRequests";
@@ -73,6 +74,7 @@ export default function App() {
             <Route path="schedule"      element={<AdminSchedule/>}/>
             <Route path="new-booking"   element={<Book/>}/>
             <Route path="courts"        element={<CourtManager/>}/>
+            {/* <Route path="lights"        element={<Lights/>}/> */}
             <Route path="bookings"      element={<BookingManager/>}/>
             <Route path="crm"           element={<CrmPage/>}/>
             <Route path="memberships"   element={<MembershipRequests/>}/>

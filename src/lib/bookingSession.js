@@ -10,9 +10,18 @@ function normCourtKey(value) {
 
 export function normalizeBookingDate(dateVal) {
   if (!dateVal) return null;
-  if (typeof dateVal === "string") return dateVal.trim().slice(0, 10);
+  if (typeof dateVal === "string") {
+    const trimmed = dateVal.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+    const d = new Date(trimmed);
+    if (!Number.isNaN(d.getTime())) return format(d, "yyyy-MM-dd");
+    return trimmed.slice(0, 10);
+  }
   if (typeof dateVal?.toDate === "function") {
     return format(dateVal.toDate(), "yyyy-MM-dd");
+  }
+  if (dateVal instanceof Date) {
+    return format(dateVal, "yyyy-MM-dd");
   }
   return null;
 }

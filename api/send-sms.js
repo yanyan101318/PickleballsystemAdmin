@@ -59,10 +59,12 @@ module.exports = async function handler(req, res) {
     });
 
     let data;
+    let responseText = "";
     try {
-      data = await response.json();
+      responseText = await response.text();
+      data = JSON.parse(responseText);
     } catch (e) {
-      console.error("Failed to parse M360 response as JSON:", await response.text());
+      console.error("Failed to parse M360 response as JSON:", responseText);
       return res.status(500).json({ error: "M360 returned invalid JSON response" });
     }
 
