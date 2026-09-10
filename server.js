@@ -1154,7 +1154,7 @@ registerRoutes(app);
 // ==========================================
 // SERVER STARTUP
 // ==========================================
-const PORT = process.env.API_PORT || process.env.PORT || 3002;
+const PORT = process.env.PORT || 3002;
 
 // Background job for equipment return SMS reminders (every 1 minute)
 setInterval(async () => {
@@ -1295,8 +1295,8 @@ app.post('/api/lights/devices', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 ensureDatabaseSchema().then(() => {
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`API Server running on port ${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
 
     if (isDev) {
       console.log("SMS API reloads on each request (development mode).");
