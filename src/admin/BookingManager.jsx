@@ -722,7 +722,10 @@ export default function BookingManager() {
       });
       for (const b of items) {
         batch.update(doc(db, "bookings", b.id), {
-          status: "Confirmed"
+          status: "Approved",
+          amount_paid: Number(b.totalAmount) || 0,
+          remaining_balance: 0,
+          customer_payment_status: "paid"
         });
       }
       await wrapSync(batch.commit(), {
@@ -730,6 +733,18 @@ export default function BookingManager() {
         offlineMsg: "Approval queued for sync",
         silent: true // handle toast manually
       });
+
+      // Update local selected state and refetch table data
+      const newPaid = Number(selected.totalAmount) || 0;
+      setSelected(s => s ? {
+         ...s, 
+         status: "Approved",
+         amountPaid: newPaid, 
+         remainingBalance: 0,
+         customerPaymentStatus: "paid"
+      } : s);
+      await loadBookings();
+      window.dispatchEvent(new CustomEvent("bookings:updated"));
 
       setActing("payment_approve_sms");
       const courtsText = selected._isGroup ? selected.displayCourts.join(", ") : (selected.courtName || "the court");

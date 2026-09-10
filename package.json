@@ -1,5 +1,5 @@
 {
-  "name": "tournament-bracket",
+  "name": "pickleballsystem",
   "version": "1.0.0",
   "description": "Pickleball Management System",
   "author": "Pickleball Admin",
@@ -108,5 +108,5 @@
     "react-scripts": "^5.0.1",
     "wait-on": "^8.0.3"
   },
-  "proxy": "http://127.0.0.1:3003"
+  "proxy": "http://127.0.0.1:3002"
 }

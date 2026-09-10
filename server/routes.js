@@ -11,6 +11,7 @@ const {
 } = require("./helpers");
 
 function registerRoutes(app) {
+
   // ── Bookings ──────────────────────────────────────────────────────
   app.get("/api/bookings", async (req, res) => {
     try {
@@ -355,6 +356,30 @@ function registerRoutes(app) {
           );
           console.log("✓ Customer created");
         }
+      }
+
+      // STEP 5: INSERT NOTIFICATION
+      try {
+        const notifId = "notif_" + Date.now().toString(36) + Math.random().toString(36).substring(2);
+        const notifTitle = "New Booking Received";
+        const notifMsg = `New booking received from ${booking.playerName || 'Guest'} for ${booking.courtName || 'Court'} on ${booking.date || ''} (${booking.timeSlot || ''})`;
+        const notifData = {
+          bookingId: newBookingId,
+          playerName: booking.playerName || 'Guest',
+          courtName: booking.courtName,
+          date: booking.date,
+          timeSlot: booking.timeSlot,
+          totalAmount: booking.totalAmount
+        };
+
+        await pool.query(
+          `INSERT INTO notifications (id, type, title, message, data, is_read, created_at)
+           VALUES ($1, $2, $3, $4, $5::jsonb, false, NOW())`,
+          [notifId, 'booking', notifTitle, notifMsg, JSON.stringify(notifData)]
+        );
+        console.log("✓ Notification record inserted");
+      } catch (notifErr) {
+        console.error("Failed to insert notification record:", notifErr.message);
       }
 
       console.log("=== ✓ SUCCESS: Booking created! ===\n");

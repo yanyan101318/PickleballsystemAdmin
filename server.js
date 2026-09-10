@@ -14,10 +14,31 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use("/api/tournaments-v2", tournamentV2Routes);
 
+const notificationsRouter = require("./server/routes/notifications");
+app.use("/api/notifications", notificationsRouter);
+
 async function ensureDatabaseSchema() {
   try {
     await pool.query(`ALTER TABLE payments ADD COLUMN IF NOT EXISTS rejection_reason TEXT`);
     await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar TEXT`);
+    
+    // Add missing columns to courts
+    await pool.query(`ALTER TABLE courts ADD COLUMN IF NOT EXISTS base_status VARCHAR(50) DEFAULT 'available'`);
+    await pool.query(`ALTER TABLE courts ADD COLUMN IF NOT EXISTS override_status VARCHAR(50)`);
+    await pool.query(`ALTER TABLE courts ADD COLUMN IF NOT EXISTS override_expires_at TIMESTAMPTZ`);
+    await pool.query(`ALTER TABLE courts ADD COLUMN IF NOT EXISTS qr_code_image TEXT`);
+
+    // Add missing columns to bookings
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS remaining_balance DECIMAL(12,2)`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_plan VARCHAR(50)`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50)`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS customer_payment_status VARCHAR(50)`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS amount_paid DECIMAL(12,2)`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS total_amount DECIMAL(12,2)`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email VARCHAR(255)`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS start_time VARCHAR(50)`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS end_time VARCHAR(50)`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS booking_date DATE`);
     await pool.query(`
         CREATE TABLE IF NOT EXISTS paddle_stack_state (
           id VARCHAR(50) PRIMARY KEY,
@@ -78,6 +99,16 @@ async function ensureDatabaseSchema() {
           date DATE,
           time VARCHAR(50),
           status VARCHAR(50) DEFAULT 'Active',
+          created_at TIMESTAMPTZ DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS notifications (
+          id VARCHAR(255) PRIMARY KEY,
+          type VARCHAR(50) DEFAULT 'booking',
+          title VARCHAR(255) NOT NULL,
+          message TEXT NOT NULL,
+          data JSONB DEFAULT '{}',
+          is_read BOOLEAN DEFAULT false,
           created_at TIMESTAMPTZ DEFAULT NOW()
         );
 
@@ -165,7 +196,6 @@ async function ensureDatabaseSchema() {
       `);
     } catch (err) {
     console.error("Database schema migration failed:", err.message);
-    process.exit(1);
   }
 }
 
@@ -1124,7 +1154,7 @@ registerRoutes(app);
 // ==========================================
 // SERVER STARTUP
 // ==========================================
-const PORT = process.env.API_PORT || 3003;
+const PORT = process.env.API_PORT || process.env.PORT || 3002;
 
 // Background job for equipment return SMS reminders (every 1 minute)
 setInterval(async () => {

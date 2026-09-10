@@ -1,10 +1,10 @@
 // src/admin/AdminLayout.jsx
 import { useState, useEffect, useRef } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
-import toast from "react-hot-toast";
 import { useAuth } from "../auth/AuthContext";
 import RanawLogo from "../components/RanawLogo";
 import AdminChatWidget from "./AdminChatWidget";
+import NotificationBell from "./NotificationBell";
 
 const NAV_LINKS = [
   { to: "/admin/dashboard", label: "Dashboard" },
@@ -41,14 +41,8 @@ export default function AdminLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const tournamentRef = useRef(null);
   const bookingRef = useRef(null);
-  const notifRef = useRef(null);
-  const notifOpenRef = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
-
-  const [pendingBookingCount, setPendingBookingCount] = useState(0);
-  const [unseenBookingCount, setUnseenBookingCount] = useState(0);
-  const [notifOpen, setNotifOpen] = useState(false);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
@@ -89,10 +83,6 @@ export default function AdminLayout() {
   }, [mobileMenuOpen]);
 
   useEffect(() => {
-    notifOpenRef.current = notifOpen;
-  }, [notifOpen]);
-
-  useEffect(() => {
     function handleClickOutside(e) {
       if (tournamentRef.current && !tournamentRef.current.contains(e.target)) {
         setTournamentOpen(false);
@@ -100,47 +90,10 @@ export default function AdminLayout() {
       if (bookingRef.current && !bookingRef.current.contains(e.target)) {
         setBookingOpen(false);
       }
-      if (notifRef.current && !notifRef.current.contains(e.target)) {
-        setNotifOpen(false);
-      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  /** Poll pending bookings from PostgreSQL every 30 seconds */
-  useEffect(() => {
-    if (loading || role !== "admin") return;
-    let prevPendingIds = new Set();
-
-    async function fetchPending() {
-      try {
-        const res = await fetch('/api/bookings?status=Pending');
-        if (!res.ok) return;
-        const data = await res.json();
-        const count = data.length;
-        setPendingBookingCount(count);
-
-        // Detect new pending bookings since last poll
-        const currentIds = new Set(data.map(b => b.id));
-        for (const b of data) {
-          if (!prevPendingIds.has(b.id)) {
-            const who = b.player_name || b.contact_number || 'Guest';
-            const court = b.court_name || b.court_id || 'Court';
-            if (!notifOpenRef.current) setUnseenBookingCount(n => n + 1);
-            toast.success(`Manual booking: ${who} — ${court}`, { duration: 6000 });
-          }
-        }
-        prevPendingIds = currentIds;
-      } catch (err) {
-        console.error('Booking poll error:', err);
-      }
-    }
-
-    fetchPending();
-    const interval = setInterval(fetchPending, 30000);
-    return () => clearInterval(interval);
-  }, [loading, role]);
 
   async function handleLogout() {
     await logout();
@@ -306,45 +259,7 @@ export default function AdminLayout() {
               </span>
             </div>
             <div className="flex items-center gap-1 sm:gap-3">
-              <div className="relative shrink-0" ref={notifRef}>
-                <button
-                  type="button"
-                  className="relative p-2 text-slate-400 hover:text-cyan-400 transition-colors"
-                  aria-label={`Notifications${pendingBookingCount ? `, ${pendingBookingCount} pending bookings` : ""}`}
-                  aria-expanded={notifOpen}
-                  onClick={() => {
-                    setNotifOpen((o) => {
-                      const next = !o;
-                      if (next) setUnseenBookingCount(0);
-                      return next;
-                    });
-                  }}
-                >
-                  <span className="material-symbols-outlined text-[22px] sm:text-[24px]">notifications</span>
-                  {unseenBookingCount > 0 && (
-                    <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-cyan-500 text-[10px] font-bold text-slate-950 shadow">
-                      {unseenBookingCount > 99 ? "99+" : unseenBookingCount}
-                    </span>
-                  )}
-                </button>
-                {notifOpen && (
-                  <div className="absolute right-0 top-full mt-2 w-[min(calc(100vw-2rem),280px)] rounded-xl border border-slate-700 bg-[#151e2d] shadow-xl z-[130] py-3 px-3 text-left">
-                    <p className="text-xs font-semibold text-white mb-1">Bookings</p>
-                    <p className="text-[11px] text-slate-400 mb-3">
-                      {pendingBookingCount === 0
-                        ? "No pending approvals."
-                        : `${pendingBookingCount} booking${pendingBookingCount === 1 ? "" : "s"} awaiting approval.`}
-                    </p>
-                    <NavLink
-                      to="/admin/bookings"
-                      className="block text-center rounded-lg bg-cyan-500/15 border border-cyan-500/40 text-cyan-300 text-xs font-semibold py-2 hover:bg-cyan-500/25 transition-colors"
-                      onClick={() => setNotifOpen(false)}
-                    >
-                      Open booking management
-                    </NavLink>
-                  </div>
-                )}
-              </div>
+              <NotificationBell />
               <div className="flex items-center gap-2 sm:gap-3 pl-2 sm:pl-4 border-l border-slate-800 relative min-w-0">
                 <div
                   className="flex flex-col items-end cursor-pointer min-w-0 max-w-[120px] sm:max-w-none"

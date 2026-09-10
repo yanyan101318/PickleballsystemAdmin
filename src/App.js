@@ -44,7 +44,7 @@ export default function App() {
     <AuthProvider>
       <BrowserRouter>
         <Toaster
-          position="top-right"
+          position="bottom-right"
           toastOptions={{
             style: { background: "#151e2d", color: "#e2e8f0", border: "1px solid #334155" },
           }}

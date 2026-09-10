@@ -2,13 +2,21 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 // This Pool uses the exact variables from the .env file we created earlier!
-const pool = new Pool({
-    user: process.env.DB_USER,
-    host: process.env.DB_HOST,
-    database: process.env.DB_NAME,
-    password: process.env.DB_PASSWORD,
-    port: process.env.DB_PORT,
-});
+const poolConfig = process.env.DATABASE_URL
+    ? {
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+    }
+    : {
+        user: process.env.DB_USER,
+        host: process.env.DB_HOST,
+        database: process.env.DB_NAME,
+        password: process.env.DB_PASSWORD,
+        port: process.env.DB_PORT,
+        ssl: { rejectUnauthorized: false }
+    };
+
+const pool = new Pool(poolConfig);
 
 // Test the connection
 pool.on('connect', () => {
@@ -17,7 +25,6 @@ pool.on('connect', () => {
 
 pool.on('error', (err) => {
     console.error('Unexpected error on idle client', err);
-    process.exit(-1);
 });
 
 module.exports = pool;

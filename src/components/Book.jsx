@@ -57,7 +57,8 @@ function format24to12(time24) {
 }
 
 function deriveCourtKind(c) {
-  const joined = (c.amenities || [])
+  const ams = Array.isArray(c.amenities) ? c.amenities : [];
+  const joined = ams
     .map((x) => String(x).toLowerCase())
     .join(" ");
   if (joined.includes("indoor")) return "Indoor";
@@ -99,9 +100,12 @@ export default function Book() {
 
   /** Rental add-ons: prefer `price`, fall back to legacy inventory `pricePerHour`. */
   function getRentalItemPrice(item) {
-    const p = item?.price;
-    if (p != null && Number.isFinite(Number(p))) return Number(p);
-    return Number(item?.pricePerHour) || 0;
+    if (item?.type === 'rental') {
+      return Number(item?.pricePerHour) || Number(item?.price_per_hour) || 0;
+    }
+    const p = Number(item?.price);
+    if (p > 0) return p;
+    return Number(item?.pricePerHour) || Number(item?.price_per_hour) || 0;
   }
 
   const [courts, setCourts] = useState([]);
@@ -188,7 +192,7 @@ export default function Book() {
       try {
         const res = await fetch("/api/courts");
         const list = await res.json();
-        setCourts(list);
+        setCourts(Array.isArray(list) ? list : []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -324,7 +328,7 @@ export default function Book() {
   useEffect(() => {
     async function loadRentalAddOns() {
       try {
-        const res = await fetch("/api/inventory");
+        const res = await fetch("/api/equipment");
         const list = await res.json();
         setRentalAddOns((Array.isArray(list) ? list : []).filter(isRentalInventoryItem));
       } catch (err) {
@@ -372,8 +376,8 @@ export default function Book() {
     [rentalAddOns, form.equipment]
   );
   const equipmentTotal = useMemo(
-    () => equipmentItems.reduce((s, e) => s + getRentalItemPrice(e), 0),
-    [equipmentItems]
+    () => equipmentItems.reduce((s, e) => s + (getRentalItemPrice(e) * actualDuration), 0),
+    [equipmentItems, actualDuration]
   );
   const courtTotal = (court?.price ?? 0) * actualDuration;
   const subtotal = courtTotal + equipmentTotal;
@@ -1191,7 +1195,7 @@ export default function Book() {
                               <Package className="text-slate-400 shrink-0" size={28} strokeWidth={1.5} />
                               <div className="text-left min-w-0">
                                 <div className="text-white font-medium truncate">{item.name || "Rental"}</div>
-                                <div className="text-slate-500 text-sm">₱{price.toLocaleString()} per session</div>
+                                <div className="text-slate-500 text-sm">₱{price.toLocaleString()}/hr</div>
                               </div>
                             </div>
                             <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${form.equipment.includes(item.id) ? "border-green-500 bg-green-500" : "border-slate-600"

@@ -6,8 +6,10 @@ import { Toaster, toast } from "react-hot-toast";
 import MessageOptionsMenu from "../components/chat/MessageOptionsMenu";
 import { Pin, Paperclip, Loader2, X } from "lucide-react";
 
+import { SOCKET_URL } from "../config/api";
+
 const API_BASE = "/api";
-const socket = io("http://localhost:3000", { autoConnect: false });
+const socket = io(SOCKET_URL, { autoConnect: false });
 
 export default function AdminChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
@@ -285,7 +287,6 @@ export default function AdminChatWidget() {
 
   return (
     <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end">
-      <Toaster position="top-center" />
       
       {isOpen && (
         <div 

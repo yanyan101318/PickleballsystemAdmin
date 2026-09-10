@@ -306,7 +306,6 @@ export default function AdminChat() {
 
   return (
     <div className="flex h-[calc(100vh-140px)] bg-[#151e2d] border border-slate-700 rounded-2xl overflow-hidden shadow-2xl relative">
-      <Toaster position="top-center" />
       {/* LEFT: Chat List */}
       <div className="w-1/3 min-w-[280px] max-w-[360px] border-r border-slate-700 bg-[#0a0f18] flex flex-col min-h-0">
         <div className="p-4 border-b border-slate-800 bg-[#151e2d]">
