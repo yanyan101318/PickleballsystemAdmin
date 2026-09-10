@@ -10,6 +10,8 @@ function getExpectedAdminCode() {
   return process.env.REACT_APP_ADMIN_REGISTRATION_CODE || "admin123";
 }
 
+const API_URL = import.meta.env.VITE_API_URL || 'https://pickleballsystemadmin.onrender.com';
+
 export default function LoginPage() {
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
@@ -23,7 +25,7 @@ export default function LoginPage() {
   const { loginUser } = useAuth();
 
   useEffect(() => {
-    document.title = "PICKLE BROS COURT | Login";
+    document.title = "PickleBros — Login";
   }, []);
 
   function openRegisterModal() {
@@ -43,7 +45,7 @@ export default function LoginPage() {
     setAdminCodeError("");
     const expected = getExpectedAdminCode();
     if (adminCode.trim() !== expected) {
-      setAdminCodeError("Invalid admin code");
+      setAdminCodeError("Incorrect registration code.");
       return;
     }
     grantRegisterAccess();
@@ -56,7 +58,7 @@ export default function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),

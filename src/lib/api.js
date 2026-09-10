@@ -1,6 +1,6 @@
 /** Client-side API helpers for the PostgreSQL-backed backend */
 
-const API_BASE = "";
+const API_BASE = import.meta.env.VITE_API_URL || 'https://pickleballsystemadmin.onrender.com';
 
 export async function apiGet(path) {
   const res = await fetch(`${API_BASE}${path}`);
