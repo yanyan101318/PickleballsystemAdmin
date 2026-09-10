@@ -240,7 +240,7 @@ export default function Book() {
         id: b.id,
         courtId: b.courtId || b.court_id || b.courtID || "",
         timeSlot: b.timeSlot,
-        startTime: b.startTime || b.timeSlot,
+        startTime: b?.startTime || b?.timeSlot,
         duration: Number(b.duration) || 1,
         status: b.status
       }));
@@ -525,7 +525,7 @@ export default function Book() {
       ).map((b) => ({
         id: b.id,
         timeSlot: b.timeSlot,
-        startTime: b.startTime || b.timeSlot,
+        startTime: b?.startTime || b?.timeSlot,
         duration: Number(b.duration) || 1,
         status: b.status,
       }));
@@ -1106,7 +1106,7 @@ export default function Book() {
                         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                           {TIME_SLOTS.map((slot) => {
                             const inPast = isSlotInPast(form.date, slot);
-                            const exactBooked = dayBookings.some((b) => (b.startTime || b.timeSlot) === slot);
+                            const exactBooked = dayBookings.some((b) => (b?.startTime || b?.timeSlot) === slot);
                             const isTaken = !inPast && !isSlotStartAvailableForDuration(
                               slot,
                               actualDuration,

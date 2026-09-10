@@ -139,12 +139,16 @@ export default function Lights() {
           const upcoming = parsed.filter(({ start }) => start > now).sort((a, b) => a.start.getTime() - b.start.getTime())[0];
           
           let bookingText = 'Next Booking: None today';
-          if (active) {
+          if (active?.booking) {
             const pName = (active.booking.playerName || active.booking.player_name || 'GUEST').toUpperCase();
-            bookingText = `CURRENT BOOKING: ${active.booking.startTime} – ${active.booking.endTime} · ${pName}`;
-          } else if (upcoming) {
+            const sTime = active.booking.startTime || active.booking.timeSlot || '';
+            const eTime = active.booking.endTime || '';
+            bookingText = `CURRENT BOOKING: ${sTime} – ${eTime} · ${pName}`;
+          } else if (upcoming?.booking) {
             const pName = (upcoming.booking.playerName || upcoming.booking.player_name || 'GUEST').toUpperCase();
-            bookingText = `NEXT BOOKING: ${upcoming.booking.startTime} – ${upcoming.booking.endTime} · ${pName}`;
+            const sTime = upcoming.booking.startTime || upcoming.booking.timeSlot || '';
+            const eTime = upcoming.booking.endTime || '';
+            bookingText = `NEXT BOOKING: ${sTime} – ${eTime} · ${pName}`;
           } else {
             bookingText = 'NEXT BOOKING: NONE TODAY';
           }

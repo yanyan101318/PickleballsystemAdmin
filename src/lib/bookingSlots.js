@@ -64,7 +64,7 @@ export function isSlotStartAvailableForDuration(timeSlot, durationHours, existin
     if (excludeBookingId && ob.id === excludeBookingId) continue;
     if (!isActiveBookingStatus(ob.status)) continue;
 
-    const obStart = timeToMinutes(ob.startTime || ob.timeSlot);
+    const obStart = timeToMinutes(ob?.startTime || ob?.timeSlot);
     const obDuration = Number(ob.duration) || 1;
     const obEnd = obStart + obDuration * 60;
 

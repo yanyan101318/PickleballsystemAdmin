@@ -1295,9 +1295,23 @@ app.post('/api/lights/devices', async (req, res) => {
 
 ensureDatabaseSchema().catch(console.error);
 
-const PORT = process.env.PORT || 3002;
+const http = require('http');
+const { Server } = require("socket.io");
 
-app.listen(PORT, '0.0.0.0', () => {
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE"]
+  }
+});
+
+io.on('connection', (socket) => {
+  console.log('Client connected to socket:', socket.id);
+});
+
+const PORT = process.env.PORT || 3002;
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 
   if (isDev) {
