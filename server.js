@@ -1154,7 +1154,6 @@ registerRoutes(app);
 // ==========================================
 // SERVER STARTUP
 // ==========================================
-const PORT = process.env.PORT || 3002;
 
 // Background job for equipment return SMS reminders (every 1 minute)
 setInterval(async () => {
@@ -1294,19 +1293,21 @@ app.post('/api/lights/devices', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 
-ensureDatabaseSchema().then(() => {
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+ensureDatabaseSchema().catch(console.error);
 
-    if (isDev) {
-      console.log("SMS API reloads on each request (development mode).");
-    }
+const PORT = process.env.PORT || 3002;
 
-    const mask = process.env.M360_SHORTCODE_MASK || process.env.M360_SENDER_ID || "";
-    if (!String(mask).trim()) {
-      console.warn(
-        "WARNING: M360_SHORTCODE_MASK is not set — SMS will fail until you add your m360 sender ID to .env"
-      );
-    }
-  });
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on port ${PORT}`);
+
+  if (isDev) {
+    console.log("SMS API reloads on each request (development mode).");
+  }
+
+  const mask = process.env.M360_SHORTCODE_MASK || process.env.M360_SENDER_ID || "";
+  if (!String(mask).trim()) {
+    console.warn(
+      "WARNING: M360_SHORTCODE_MASK is not set — SMS will fail until you add your m360 sender ID to .env"
+    );
+  }
 });
