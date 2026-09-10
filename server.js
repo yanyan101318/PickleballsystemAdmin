@@ -1295,8 +1295,8 @@ app.post('/api/lights/devices', async (req, res) => {
 // ---------------------------------------------------------------------------
 
 ensureDatabaseSchema().then(() => {
-  app.listen(PORT, "127.0.0.1", () => {
-    console.log(`Local API Server running on http://127.0.0.1:${PORT}`);
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`API Server running on port ${PORT}`);
 
     if (isDev) {
       console.log("SMS API reloads on each request (development mode).");
